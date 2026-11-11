@@ -19,7 +19,7 @@ export async function loadData() {
     try { return { data: JSON.parse(await readFile(LOCAL_PATH, 'utf8')), etag: null }; }
     catch (error) { if (error.code === 'ENOENT') return { data: emptyData(), etag: null }; throw error; }
   }
-  const result = await get(BLOB_PATH, { access: 'private' });
+  const result = await get(BLOB_PATH, { access: 'private', useCache: false });
   if (!result) return { data: emptyData(), etag: null };
   const data = JSON.parse(await new Response(result.stream).text());
   return { data, etag: result.blob.etag };
@@ -41,7 +41,8 @@ export async function mutateData(change) {
       });
       return { data, result };
     } catch (error) {
-      if (!['BlobPreconditionFailedError', 'BlobAlreadyExistsError'].includes(error.name) || attempt === 4) throw error;
+      const conflict = /Precondition failed|ETag mismatch|already exists/i.test(error.message || '');
+      if (!conflict || attempt === 4) throw error;
     }
   }
   throw new Error('Unable to save changes');
