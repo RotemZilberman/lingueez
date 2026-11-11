@@ -27,7 +27,7 @@ Production refuses to use local file storage. The vocabulary and reading library
 
 The deployed project is `oathfox/lingueez-personal`, with `web` set as its Root Directory. Deploy from the repository root with `vercel --prod`; deploying from inside `web` will fail because Vercel expects to find the `web` directory in the uploaded source. The Vercel account has no GitHub login connection, so pushing the fork does not currently trigger a deployment.
 
-The custom domain needs one Cloudflare DNS record: `CNAME en 86b0aeb9a49b4aa3.vercel-dns-017.com` with proxying off (DNS only). Vercel has already assigned `en.oathfox.com` to this project.
+The live custom domain is `en.oathfox.com`. Cloudflare has a DNS-only CNAME `en → 86b0aeb9a49b4aa3.vercel-dns-017.com`; Vercel has verified it for this project.
 
 The static login screen can be loaded by anyone, while every data and translation API route requires a valid signed session. The server checks same-origin requests. The app's one account is configured by the environment variables; no credentials are committed to Git.
 
