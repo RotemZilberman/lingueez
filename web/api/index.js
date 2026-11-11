@@ -105,8 +105,18 @@ export default async function handler(req, res) {
       if (!text || text.length > MAX_TEXT) return reply(res, 400, { error: `Enter up to ${MAX_TEXT} characters` });
       if (source === target) return reply(res, 400, { error: 'Choose different languages' });
       const translation = await googleTranslate(text, source, target);
+      return reply(res, 200, { text, translation, source, target });
+    }
+    if (op === 'save' && req.method === 'POST') {
+      const input = await body(req);
+      const text = normalizeText(input.text);
+      const translation = normalizeText(input.translation);
+      const source = String(input.source || 'en');
+      const target = String(input.target || 'he');
+      if (!text || text.length > MAX_TEXT || !translation || translation.length > MAX_TEXT) return reply(res, 400, { error: `Enter a word and translation of up to ${MAX_TEXT} characters` });
+      if (!/^[a-z-]{2,8}$/i.test(source) || !/^[a-z-]{2,8}$/i.test(target) || source === target) return reply(res, 400, { error: 'Choose different languages' });
       const { result: word } = await mutateData(data => saveTranslation(data, { text, translation, source, target, context: input.context }));
-      return reply(res, 200, { translation, word });
+      return reply(res, 200, { word });
     }
     if (op === 'grade' && req.method === 'POST') {
       const input = await body(req);

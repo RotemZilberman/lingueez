@@ -1,6 +1,6 @@
 # Lingueez personal web
 
-This web edition lives alongside the Lingueez desktop source. It uses the same Google public translation endpoint and the desktop app's SM-2 review rules. Translations are saved automatically, including repeat encounters. The app includes vocabulary management, flashcards, a quiz, a pasted-text reader, progress, and JSON backup/import.
+This web edition lives alongside the Lingueez desktop source. It uses the same Google public translation endpoint and the desktop app's SM-2 review rules. Translating previews a result without saving it; clicking **Save to words** adds it to vocabulary. The language swap button supports English → Hebrew and Hebrew → English, as well as the other available language pairs. Repeated saves count as new encounters. The app includes vocabulary management, flashcards, a quiz, a pasted-text reader, progress, and JSON backup/import.
 
 ## Local run
 
