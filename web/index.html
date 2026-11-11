@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101827">
+  <title>Lingueez — Your words, remembered</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <div id="login" class="login-shell" hidden>
+    <form id="login-form" class="login-card">
+      <div class="brand-mark">L<span>✦</span></div>
+      <p class="eyebrow">PERSONAL VOCABULARY SPACE</p>
+      <h1>Words worth<br><em>remembering.</em></h1>
+      <p class="muted">Translate, save, and make them yours.</p>
+      <label>Username<input name="username" autocomplete="username" required autofocus></label>
+      <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+      <button class="button primary full" type="submit">Enter your space <span>↗</span></button>
+      <p id="login-error" class="error" role="alert"></p>
+    </form>
+  </div>
+
+  <div id="shell" class="shell" hidden>
+    <aside class="sidebar">
+      <div class="sidebar-brand"><div class="brand-mark small">L<span>✦</span></div><div><strong>Lingueez</strong><small>personal edition</small></div></div>
+      <div class="sidebar-label">WORKSPACE</div>
+      <nav aria-label="Main navigation">
+        <button class="nav-item active" data-page="home"><span>◫</span> Overview</button>
+        <button class="nav-item" data-page="translate"><span>⇄</span> Translate</button>
+        <button class="nav-item" data-page="vocabulary"><span>▦</span> My words <b id="nav-count">0</b></button>
+        <button class="nav-item" data-page="review"><span>◇</span> Flashcards <b id="nav-due">0</b></button>
+        <button class="nav-item" data-page="quiz"><span>◉</span> Quiz</button>
+        <button class="nav-item" data-page="reader"><span>▤</span> Reader</button>
+        <button class="nav-item" data-page="stats"><span>▥</span> Progress</button>
+      </nav>
+      <div class="sidebar-credit">Lingueez — created by Yurii Lysak<br><a href="https://github.com/RotemZilberman/lingueez" target="_blank" rel="noopener noreferrer">Source code</a></div>
+      <div class="sidebar-bottom"><div class="profile-dot">R</div><div class="profile-copy"><strong id="profile-name">Your space</strong><small>Private vocabulary</small></div><button id="logout" title="Sign out" aria-label="Sign out">↪</button></div>
+    </aside>
+    <main class="main">
+      <header class="topbar"><div><span class="topbar-dot"></span> A little better every day</div><div class="topbar-right"><span id="today-label"></span><button id="menu-toggle" class="icon-button" aria-label="Open menu">☰</button></div></header>
+      <div id="content" class="content"></div>
+    </main>
+  </div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
