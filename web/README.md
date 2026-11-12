@@ -2,6 +2,8 @@
 
 This web edition lives alongside the Lingueez desktop source. It uses the same Google public translation endpoint and the desktop app's SM-2 review rules. Translation appears automatically after a short pause while typing, without saving; clicking **Save to words** adds it to vocabulary. The language swap button supports English → Hebrew and Hebrew → English, as well as the other available language pairs. Repeated saves count as new encounters. The app includes vocabulary management, flashcards, a quiz, a pasted-text reader, progress, and JSON backup/import.
 
+The translation page has separate Listen controls for the input text and translated text. Pronunciation uses the browser's speech synthesis voices for the selected source and target languages.
+
 ## Local run
 
 Requires Node 20 or later.
