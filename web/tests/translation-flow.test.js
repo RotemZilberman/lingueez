@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Readable } from 'node:stream';
+import { createHmac } from 'node:crypto';
 
 test('translation previews both directions and saves only after a separate request', async () => {
   const originalCwd = process.cwd();
@@ -27,14 +28,24 @@ test('translation previews both directions and saves only after a separate reque
       req.url = `/api?op=${op}`;
       req.method = payload ? 'POST' : 'GET';
       req.headers = { host: 'localhost', origin: 'http://localhost', cookie };
-      const response = { writeHead(status, headers) { this.status = status; this.headers = headers; }, end(body) { this.body = JSON.parse(body); } };
+      const response = { headers: {}, setHeader(name, value) { this.headers[name] = value; }, writeHead(status, headers) { this.status = status; Object.assign(this.headers, headers); }, end(body) { this.body = JSON.parse(body); } };
       await handler(req, response);
       return response;
     }
 
     const login = await call('login', { username: 'test', password: 'test-password' });
     assert.equal(login.status, 200);
+    assert.match(login.headers['Set-Cookie'], /Max-Age=31536000/);
     const cookie = login.headers['Set-Cookie'].split(';')[0];
+    assert.ok(Number(cookie.split('.')[1]) - Date.now() > 364 * 86400000);
+    assert.equal((await call('session', null, cookie)).headers['Set-Cookie'], undefined);
+
+    const oldValue = `v1.${Date.now() + 10 * 86400000}.legacy`;
+    const oldSignature = createHmac('sha256', 'a'.repeat(40)).update(oldValue).digest('base64url');
+    const oldCookie = `lingueez_session=${oldValue}.${oldSignature}`;
+    const renewed = await call('session', null, oldCookie);
+    assert.equal(renewed.status, 200);
+    assert.match(renewed.headers['Set-Cookie'], /Max-Age=31536000/);
 
     const forward = await call('translate', { text: 'hello', source: 'en', target: 'he' }, cookie);
     assert.equal(forward.status, 200);

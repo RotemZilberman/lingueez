@@ -31,6 +31,8 @@ The live custom domain is `en.oathfox.com`. Cloudflare has a DNS-only CNAME `en 
 
 The static login screen can be loaded by anyone, while every data and translation API route requires a valid signed session. The server checks same-origin requests. The app's one account is configured by the environment variables; no credentials are committed to Git.
 
+The sign-in cookie lasts one year and is renewed when an active session has fewer than 90 days left. Existing shorter sessions are renewed on their next authenticated request. Signing out or clearing browser cookies removes the local session.
+
 The Google web translation endpoint is unofficial and may change or rate-limit requests. A failed translation is shown as an error and is not saved as a successful word.
 
 This web edition preserves the project's AGPL-3.0-or-later license and required Lingueez attribution in `NOTICE`.

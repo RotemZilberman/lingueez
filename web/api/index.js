@@ -3,7 +3,8 @@ import { loadData, mutateData } from '../lib/storage.js';
 import { dueWords, gradeWord, MAX_TEXT, normalizeText, saveTranslation, stats } from '../lib/core.js';
 
 const COOKIE = 'lingueez_session';
-const SESSION_MS = 30 * 86400000;
+const SESSION_MS = 365 * 86400000;
+const RENEW_WINDOW_MS = 90 * 86400000;
 
 function reply(res, status, body, extra = {}) {
   res.writeHead(status, {
@@ -33,12 +34,18 @@ function makeSession() {
   return `${value}.${sign(value)}`;
 }
 
+function sessionCookie(req) {
+  const secure = (req.headers['x-forwarded-proto'] || 'http') === 'https' ? '; Secure' : '';
+  return `${COOKIE}=${makeSession()}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MS / 1000}${secure}`;
+}
+
 function authenticated(req) {
   const cookies = Object.fromEntries((req.headers.cookie || '').split(';').map(x => x.trim().split('=').slice(0, 2)));
   const parts = (cookies[COOKIE] || '').split('.');
-  if (parts.length !== 4 || parts[0] !== 'v1' || Number(parts[1]) < Date.now()) return false;
+  const expiresAt = Number(parts[1]);
+  if (parts.length !== 4 || parts[0] !== 'v1' || !Number.isSafeInteger(expiresAt) || expiresAt <= Date.now()) return 0;
   const value = parts.slice(0, 3).join('.');
-  return equalSecret(parts[3], sign(value));
+  return equalSecret(parts[3], sign(value)) ? expiresAt : 0;
 }
 
 function sameOrigin(req) {
@@ -82,10 +89,11 @@ export default async function handler(req, res) {
       if (!equalSecret(input.username, process.env.APP_USERNAME) || !equalSecret(input.password, process.env.APP_PASSWORD)) {
         return reply(res, 401, { error: 'Incorrect username or password' });
       }
-      const secure = (req.headers['x-forwarded-proto'] || 'http') === 'https' ? '; Secure' : '';
-      return reply(res, 200, { ok: true }, { 'Set-Cookie': `${COOKIE}=${makeSession()}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${SESSION_MS / 1000}${secure}` });
+      return reply(res, 200, { ok: true }, { 'Set-Cookie': sessionCookie(req) });
     }
-    if (!authenticated(req)) return reply(res, 401, { error: 'Sign in required' });
+    const expiresAt = authenticated(req);
+    if (!expiresAt) return reply(res, 401, { error: 'Sign in required' });
+    if (op !== 'logout' && expiresAt - Date.now() < RENEW_WINDOW_MS) res.setHeader('Set-Cookie', sessionCookie(req));
     if (op === 'session' && req.method === 'GET') return reply(res, 200, { username: process.env.APP_USERNAME });
     if (op === 'logout' && req.method === 'POST') return reply(res, 200, { ok: true }, { 'Set-Cookie': `${COOKIE}=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0` });
 
