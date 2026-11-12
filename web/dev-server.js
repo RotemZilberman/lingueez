@@ -6,7 +6,11 @@ import handler from './api/index.js';
 const files = {
   '/': ['index.html', 'text/html; charset=utf-8'],
   '/app.js': ['app.js', 'text/javascript; charset=utf-8'],
-  '/styles.css': ['styles.css', 'text/css; charset=utf-8']
+  '/styles.css': ['styles.css', 'text/css; charset=utf-8'],
+  '/favicon.svg': ['favicon.svg', 'image/svg+xml'],
+  '/favicon.ico': ['favicon.ico', 'image/x-icon'],
+  '/favicon-32.png': ['favicon-32.png', 'image/png'],
+  '/apple-touch-icon.png': ['apple-touch-icon.png', 'image/png']
 };
 
 http.createServer(async (req, res) => {
