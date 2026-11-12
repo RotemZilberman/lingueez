@@ -1,10 +1,10 @@
 const $ = selector => document.querySelector(selector);
 const e = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const state = { page: 'home', data: { words: [], texts: [], events: [], stats: {} }, query: '', filter: 'all', result: null, translateInput: '', source: 'en', target: 'he', reviewQueue: [], reviewIndex: 0, revealed: false, quiz: null, readerId: null, readerResult: null };
+const state = { page: 'home', data: { words: [], texts: [], events: [], stats: {} }, query: '', filter: 'all', result: null, translateInput: '', source: 'en', target: 'he', translateTimer: null, translateController: null, translateVersion: 0, reviewQueue: [], reviewIndex: 0, revealed: false, quiz: null, readerId: null, readerResult: null };
 const languages = { en: 'English', he: 'Hebrew', es: 'Spanish', fr: 'French', de: 'German', it: 'Italian', pt: 'Portuguese', ar: 'Arabic', ru: 'Russian', ja: 'Japanese', zh: 'Chinese' };
 
-async function api(op, method = 'GET', payload) {
-  const response = await fetch(`/api?op=${op}`, { method, credentials: 'same-origin', headers: payload ? { 'Content-Type': 'application/json' } : {}, body: payload ? JSON.stringify(payload) : undefined });
+async function api(op, method = 'GET', payload, options = {}) {
+  const response = await fetch(`/api?op=${op}`, { method, credentials: 'same-origin', headers: payload ? { 'Content-Type': 'application/json' } : {}, body: payload ? JSON.stringify(payload) : undefined, signal: options.signal });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || 'Request failed');
   return data;
@@ -27,8 +27,8 @@ function renderHome() {
 
 function renderTranslate() {
   const result = state.result;
-  return `${head('LOOK UP & LEARN', 'Translate <em>anything.</em>', 'Translations stay private to this page until you choose Save to words.')}
-  <form id="translate-form"><div class="direction-row"><span>${e(languages[state.source])} → ${e(languages[state.target])}</span><button type="button" class="button small" id="swap-langs" aria-label="Swap translation languages">⇄ Swap languages</button></div><div class="translate-layout"><div class="card translate-panel"><div class="panel-top"><span>FROM</span><select id="source-lang">${Object.entries(languages).map(([code, name]) => `<option value="${code}" ${code === state.source ? 'selected' : ''}>${name}</option>`).join('')}</select></div><textarea id="translate-input" placeholder="Type or paste a word, phrase, or sentence…" maxlength="2000" aria-label="Text to translate" dir="auto">${e(state.translateInput)}</textarea><div class="panel-bottom"><span>Press Ctrl/⌘ + Enter to translate</span><span id="char-count">${state.translateInput.length} / 2000</span></div></div><div class="card translate-panel"><div class="panel-top"><span>TO</span><select id="target-lang">${Object.entries(languages).map(([code, name]) => `<option value="${code}" ${code === state.target ? 'selected' : ''}>${name}</option>`).join('')}</select></div><div class="translated" id="translation-output" dir="auto">${result ? e(result.translation) : '<span style="color:#b9c2c3">Your translation will appear here.</span>'}</div><div class="panel-bottom"><span id="translation-status">${result ? (result.saved ? 'Saved to your words ✓' : 'Not saved yet') : 'Ready when you are'}</span><button type="button" class="button small" id="speak-result" ${result ? '' : 'disabled'}>♫ Listen</button></div></div></div><div class="translate-actions"><button id="translate-submit" type="submit" class="button primary">Translate <span>→</span></button><button id="save-translation" type="button" class="button" ${result && !result.saved ? '' : 'disabled'}>${result?.saved ? 'Saved ✓' : 'Save to words'}</button></div></form>
+  return `${head('LOOK UP & LEARN', 'Translate <em>anything.</em>', 'Translations appear as you type. Save only the words you want to study.')}
+  <div id="translate-workspace"><div class="direction-row"><span>${e(languages[state.source])} → ${e(languages[state.target])}</span><button type="button" class="button small" id="swap-langs" aria-label="Swap translation languages">⇄ Swap languages</button></div><div class="translate-layout"><div class="card translate-panel"><div class="panel-top"><span>FROM</span><select id="source-lang">${Object.entries(languages).map(([code, name]) => `<option value="${code}" ${code === state.source ? 'selected' : ''}>${name}</option>`).join('')}</select></div><textarea id="translate-input" placeholder="Type or paste a word, phrase, or sentence…" maxlength="2000" aria-label="Text to translate" dir="auto">${e(state.translateInput)}</textarea><div class="panel-bottom"><span>Translation appears as you type</span><span id="char-count">${state.translateInput.length} / 2000</span></div></div><div class="card translate-panel"><div class="panel-top"><span>TO</span><select id="target-lang">${Object.entries(languages).map(([code, name]) => `<option value="${code}" ${code === state.target ? 'selected' : ''}>${name}</option>`).join('')}</select></div><div class="translated" id="translation-output" dir="auto">${result ? e(result.translation) : '<span style="color:#b9c2c3">Your translation will appear here.</span>'}</div><div class="panel-bottom"><span id="translation-status">${result ? (result.saved ? 'Saved to your words ✓' : 'Not saved yet') : 'Ready when you are'}</span><button type="button" class="button small" id="speak-result" ${result ? '' : 'disabled'}>♫ Listen</button></div></div></div><div class="translate-actions"><button id="save-translation" type="button" class="button" ${result && !result.saved ? '' : 'disabled'}>${result?.saved ? 'Saved ✓' : 'Save to words'}</button></div></div>
   <p class="hint">Only words you save are added to your vocabulary and review cards. You can swap the direction at any time.</p>`;
 }
 
@@ -105,17 +105,61 @@ function render() {
 }
 
 async function refresh() { state.data = await api('data'); render(); }
-function go(page) { state.page = page; if (page === 'review') { state.reviewQueue = state.data.words.filter(w => w.status !== 'known' && (!w.nextReview || w.nextReview <= new Date().toISOString())); state.reviewIndex = 0; state.revealed = false; } if (page === 'quiz') state.quiz = chooseQuiz(); render(); document.querySelector('.main').scrollTo?.(0, 0); }
+function cancelTranslation() {
+  clearTimeout(state.translateTimer);
+  state.translateController?.abort();
+  state.translateController = null;
+  state.translateVersion++;
+}
+
+function queueTranslation() {
+  cancelTranslation();
+  state.result = null;
+  const text = state.translateInput.trim();
+  const output = $('#translation-output');
+  const status = $('#translation-status');
+  const save = $('#save-translation');
+  if (!output || !status || !save) return;
+  save.disabled = true;
+  save.textContent = 'Save to words';
+  $('#speak-result').disabled = true;
+  if (!text) { output.textContent = 'Your translation will appear here.'; status.textContent = 'Ready when you are'; return; }
+  if (state.source === state.target) { output.textContent = 'Choose different languages.'; status.textContent = 'Select two languages'; return; }
+  output.textContent = 'Translating…';
+  status.textContent = 'Looking up translation';
+  const version = state.translateVersion;
+  const source = state.source;
+  const target = state.target;
+  state.translateTimer = setTimeout(async () => {
+    const controller = new AbortController();
+    state.translateController = controller;
+    try {
+      const result = await api('translate', 'POST', { text, source, target }, { signal: controller.signal });
+      if (version !== state.translateVersion || state.page !== 'translate') return;
+      state.result = { ...result, saved: false };
+      output.textContent = result.translation;
+      status.textContent = 'Not saved yet';
+      save.disabled = false;
+      $('#speak-result').disabled = false;
+    } catch (error) {
+      if (version !== state.translateVersion || error.name === 'AbortError') return;
+      output.textContent = 'Could not translate. Try again in a moment.';
+      status.textContent = error.message || 'Translation unavailable';
+    } finally {
+      if (state.translateController === controller) state.translateController = null;
+    }
+  }, 450);
+}
+
+function go(page) { if (state.page === 'translate' && page !== 'translate') cancelTranslation(); state.page = page; if (page === 'review') { state.reviewQueue = state.data.words.filter(w => w.status !== 'known' && (!w.nextReview || w.nextReview <= new Date().toISOString())); state.reviewIndex = 0; state.revealed = false; } if (page === 'quiz') state.quiz = chooseQuiz(); render(); if (page === 'translate' && state.translateInput.trim() && !state.result) queueTranslation(); document.querySelector('.main').scrollTo?.(0, 0); }
 
 function bindPage() {
   document.querySelectorAll('[data-go]').forEach(node => node.onclick = () => go(node.dataset.go));
   if (state.page === 'translate') {
-    $('#translate-input').oninput = event => { state.translateInput = event.target.value; state.result = null; $('#char-count').textContent = `${event.target.value.length} / 2000`; $('#translation-output').textContent = 'Your translation will appear here.'; $('#translation-status').textContent = 'Ready when you are'; $('#save-translation').disabled = true; $('#speak-result').disabled = true; };
-    $('#translate-input').onkeydown = event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) $('#translate-form').requestSubmit(); };
-    $('#source-lang').onchange = event => { state.source = event.target.value; state.result = null; render(); };
-    $('#target-lang').onchange = event => { state.target = event.target.value; state.result = null; render(); };
-    $('#swap-langs').onclick = () => { const previous = state.result; [state.source, state.target] = [state.target, state.source]; state.translateInput = previous ? previous.translation : $('#translate-input').value; state.result = null; render(); $('#translate-input').focus(); };
-    $('#translate-form').onsubmit = async event => { event.preventDefault(); const text = $('#translate-input').value.trim(); if (!text) return; const source = state.source; const target = state.target; const button = $('#translate-submit'); button.disabled = true; button.textContent = 'Translating…'; try { const result = await api('translate', 'POST', { text, source, target }); if (state.translateInput.trim() !== text || state.source !== source || state.target !== target) return; state.result = { ...result, saved: false }; render(); toast('Translation ready. Save it if you want to study it.'); } catch (error) { errorMessage(error); } finally { if (button.isConnected) { button.disabled = false; button.textContent = 'Translate →'; } } };
+    $('#translate-input').oninput = event => { state.translateInput = event.target.value; $('#char-count').textContent = `${event.target.value.length} / 2000`; queueTranslation(); };
+    $('#source-lang').onchange = event => { state.source = event.target.value; $('.direction-row span').textContent = `${languages[state.source]} → ${languages[state.target]}`; queueTranslation(); };
+    $('#target-lang').onchange = event => { state.target = event.target.value; $('.direction-row span').textContent = `${languages[state.source]} → ${languages[state.target]}`; queueTranslation(); };
+    $('#swap-langs').onclick = () => { const previous = state.result; [state.source, state.target] = [state.target, state.source]; state.translateInput = previous ? previous.translation : $('#translate-input').value; state.result = null; render(); queueTranslation(); $('#translate-input').focus(); };
     $('#save-translation').onclick = async event => { if (!state.result || state.result.saved) return; const result = state.result; const button = event.currentTarget; button.disabled = true; try { await api('save', 'POST', result); if (state.result === result) result.saved = true; await refresh(); toast('Saved to your words'); } catch (error) { errorMessage(error); if (button.isConnected) button.disabled = false; } };
     $('#speak-result').onclick = () => speak(state.result?.translation, state.target);
   }
