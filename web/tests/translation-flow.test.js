@@ -61,6 +61,11 @@ test('translation previews both directions and saves only after a separate reque
     assert.equal(saved.status, 200);
     assert.equal((await call('data', null, cookie)).body.words.length, 1);
     assert.equal(JSON.parse(readFileSync(join(directory, 'data/vocabulary.json'))).words[0].text, 'hello');
+
+    globalThis.fetch = async () => ({ ok: false, status: 429 });
+    const limited = await call('translate', { text: 'בית', source: 'he', target: 'en' }, cookie);
+    assert.equal(limited.status, 429);
+    assert.match(limited.body.error, /limiting translations/);
   } finally {
     process.chdir(originalCwd);
     globalThis.fetch = originalFetch;

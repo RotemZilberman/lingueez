@@ -2,12 +2,36 @@ const $ = selector => document.querySelector(selector);
 const e = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const state = { page: 'home', data: { words: [], texts: [], events: [], stats: {} }, query: '', filter: 'all', result: null, translateInput: '', source: 'en', target: 'he', translateTimer: null, translateController: null, translateVersion: 0, reviewQueue: [], reviewIndex: 0, revealed: false, quiz: null, readerId: null, readerResult: null };
 const languages = { en: 'English', he: 'Hebrew', es: 'Spanish', fr: 'French', de: 'German', it: 'Italian', pt: 'Portuguese', ar: 'Arabic', ru: 'Russian', ja: 'Japanese', zh: 'Chinese' };
+const translationCache = new Map();
 
 async function api(op, method = 'GET', payload, options = {}) {
   const response = await fetch(`/api?op=${op}`, { method, credentials: 'same-origin', headers: payload ? { 'Content-Type': 'application/json' } : {}, body: payload ? JSON.stringify(payload) : undefined, signal: options.signal });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || 'Request failed');
   return data;
+}
+
+async function translateText(text, source, target, signal) {
+  const key = `${source}:${target}:${text}`;
+  if (translationCache.has(key)) return { text, translation: translationCache.get(key), source, target };
+  const url = new URL('https://translate.googleapis.com/translate_a/single');
+  for (const [name, value] of Object.entries({ client: 'gtx', sl: source, tl: target, dt: 't', q: text })) url.searchParams.set(name, value);
+  let translation;
+  try {
+    const response = await fetch(url, { credentials: 'omit', signal });
+    if (response.status === 429) throw new Error('Google is temporarily limiting translations. Please try again shortly.');
+    if (!response.ok) throw new Error(`Translation service returned ${response.status}`);
+    const payload = await response.json();
+    translation = payload?.[0]?.map(segment => segment?.[0] || '').join('').trim();
+    if (!translation) throw new Error('No translation was returned');
+  } catch (error) {
+    if (error.name === 'AbortError' || error.message.includes('temporarily limiting')) throw error;
+    const fallback = await api('translate', 'POST', { text, source, target }, { signal });
+    translation = fallback.translation;
+  }
+  translationCache.set(key, translation);
+  if (translationCache.size > 200) translationCache.delete(translationCache.keys().next().value);
+  return { text, translation, source, target };
 }
 function toast(message) { const node = $('#toast'); node.textContent = message; node.classList.add('visible'); clearTimeout(toast.timer); toast.timer = setTimeout(() => node.classList.remove('visible'), 3500); }
 function errorMessage(error) { toast(error.message || 'Something went wrong'); }
@@ -134,7 +158,7 @@ function queueTranslation() {
     const controller = new AbortController();
     state.translateController = controller;
     try {
-      const result = await api('translate', 'POST', { text, source, target }, { signal: controller.signal });
+      const result = await translateText(text, source, target, controller.signal);
       if (version !== state.translateVersion || state.page !== 'translate') return;
       state.result = { ...result, saved: false };
       output.textContent = result.translation;
@@ -143,12 +167,12 @@ function queueTranslation() {
       $('#speak-result').disabled = false;
     } catch (error) {
       if (version !== state.translateVersion || error.name === 'AbortError') return;
-      output.textContent = 'Could not translate. Try again in a moment.';
-      status.textContent = error.message || 'Translation unavailable';
+      output.textContent = error.message || 'Could not translate. Try again in a moment.';
+      status.textContent = 'Translation unavailable';
     } finally {
       if (state.translateController === controller) state.translateController = null;
     }
-  }, 450);
+  }, 650);
 }
 
 function go(page) { if (state.page === 'translate' && page !== 'translate') cancelTranslation(); state.page = page; if (page === 'review') { state.reviewQueue = state.data.words.filter(w => w.status !== 'known' && (!w.nextReview || w.nextReview <= new Date().toISOString())); state.reviewIndex = 0; state.revealed = false; } if (page === 'quiz') state.quiz = chooseQuiz(); render(); if (page === 'translate' && state.translateInput.trim() && !state.result) queueTranslation(); document.querySelector('.main').scrollTo?.(0, 0); }
@@ -184,7 +208,7 @@ function bindPage() {
     if ($('#add-text-form')) $('#add-text-form').onsubmit = async event => { event.preventDefault(); try { const result = await api('text', 'POST', { title: $('#text-title').value, content: $('#text-content').value }); state.readerId = result.text.id; await refresh(); toast('Text added to your library'); } catch (error) { errorMessage(error); } };
     document.querySelectorAll('[data-open-text]').forEach(node => node.onclick = () => { state.readerId = node.dataset.openText; state.readerResult = null; render(); });
     if ($('#close-reader')) $('#close-reader').onclick = () => { state.readerId = null; state.readerResult = null; render(); };
-    document.querySelectorAll('[data-reader-word]').forEach(node => node.onclick = async () => { const word = node.dataset.readerWord; const text = state.data.texts.find(t => t.id === node.dataset.readerId); const context = text?.content.split(/[.!?\n]/).find(sentence => sentence.includes(word))?.trim().slice(0, 1000) || ''; const source = /[\u0590-\u05FF]/.test(word) ? 'he' : 'en'; const target = source === 'he' ? 'en' : 'he'; try { const result = await api('translate', 'POST', { text: word, source, target }); state.readerResult = { ...result, context, readerId: text.id, saved: false }; render(); toast(`${word} → ${result.translation}`); } catch (error) { errorMessage(error); } });
+    document.querySelectorAll('[data-reader-word]').forEach(node => node.onclick = async () => { const word = node.dataset.readerWord; const text = state.data.texts.find(t => t.id === node.dataset.readerId); const context = text?.content.split(/[.!?\n]/).find(sentence => sentence.includes(word))?.trim().slice(0, 1000) || ''; const source = /[\u0590-\u05FF]/.test(word) ? 'he' : 'en'; const target = source === 'he' ? 'en' : 'he'; try { const result = await translateText(word, source, target); state.readerResult = { ...result, context, readerId: text.id, saved: false }; render(); toast(`${word} → ${result.translation}`); } catch (error) { errorMessage(error); } });
     if ($('#save-reader-word')) $('#save-reader-word').onclick = async event => { if (!state.readerResult || state.readerResult.saved) return; const result = state.readerResult; const button = event.currentTarget; button.disabled = true; try { await api('save', 'POST', result); if (state.readerResult === result) result.saved = true; await refresh(); toast('Saved to your words'); } catch (error) { errorMessage(error); if (button.isConnected) button.disabled = false; } };
   }
 }

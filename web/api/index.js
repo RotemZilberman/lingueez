@@ -71,7 +71,11 @@ async function googleTranslate(text, source, target) {
     headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' },
     signal: AbortSignal.timeout(15000)
   });
-  if (!response.ok) throw new Error(`Translation service returned ${response.status}`);
+  if (!response.ok) {
+    const error = new Error(`Translation service returned ${response.status}`);
+    error.status = response.status;
+    throw error;
+  }
   const payload = await response.json();
   const translation = payload?.[0]?.map(segment => segment?.[0] || '').join('').trim();
   if (!translation) throw new Error('Translation service returned no text');
@@ -209,6 +213,7 @@ export default async function handler(req, res) {
     }
     return reply(res, 404, { error: 'Unknown route' });
   } catch (error) {
+    if (error.status === 429) return reply(res, 429, { error: 'Google is temporarily limiting translations. Please try again shortly.' });
     const expected = /^(Invalid|Word not found|Request too large|Enter|Choose|Add a title)/.test(error.message);
     if (!expected) console.error('API error:', error.name, error.message);
     return reply(res, expected ? 400 : 502, { error: expected ? error.message : 'Could not complete the request. Please try again.' });
