@@ -82,6 +82,37 @@ async function googleTranslate(text, source, target) {
   return translation;
 }
 
+async function myMemoryTranslate(text, source, target) {
+  // MyMemory limits a single lookup to 500 UTF-8 bytes.
+  if (Buffer.byteLength(text, 'utf8') > 500) throw new Error('Backup translator text limit');
+  const url = new URL('https://api.mymemory.translated.net/get');
+  url.searchParams.set('q', text);
+  url.searchParams.set('langpair', `${source}|${target}`);
+  const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  if (!response.ok) throw new Error(`Backup translator returned ${response.status}`);
+  const payload = await response.json();
+  const translation = payload?.responseData?.translatedText?.trim();
+  if (Number(payload?.responseStatus) !== 200 || !translation || /^MYMEMORY WARNING/i.test(translation)) {
+    throw new Error('Backup translator returned no translation');
+  }
+  return translation;
+}
+
+async function translate(text, source, target) {
+  try {
+    return await googleTranslate(text, source, target);
+  } catch (googleError) {
+    try {
+      return await myMemoryTranslate(text, source, target);
+    } catch (backupError) {
+      console.error('Translation providers unavailable:', googleError.message, backupError.message);
+      const error = new Error('Translation is temporarily unavailable. Please try again shortly.');
+      error.status = 503;
+      throw error;
+    }
+  }
+}
+
 export default async function handler(req, res) {
   const op = new URL(req.url, 'http://localhost').searchParams.get('op') || '';
   if (!configured()) return reply(res, 503, { error: 'Site access is not configured' });
@@ -116,7 +147,7 @@ export default async function handler(req, res) {
       const target = /^[a-z-]{2,8}$/i.test(input.target) ? input.target : 'he';
       if (!text || text.length > MAX_TEXT) return reply(res, 400, { error: `Enter up to ${MAX_TEXT} characters` });
       if (source === target) return reply(res, 400, { error: 'Choose different languages' });
-      const translation = await googleTranslate(text, source, target);
+      const translation = await translate(text, source, target);
       return reply(res, 200, { text, translation, source, target });
     }
     if (op === 'save' && req.method === 'POST') {
@@ -213,7 +244,7 @@ export default async function handler(req, res) {
     }
     return reply(res, 404, { error: 'Unknown route' });
   } catch (error) {
-    if (error.status === 429) return reply(res, 429, { error: 'Google is temporarily limiting translations. Please try again shortly.' });
+    if (error.status === 503) return reply(res, 503, { error: error.message });
     const expected = /^(Invalid|Word not found|Request too large|Enter|Choose|Add a title)/.test(error.message);
     if (!expected) console.error('API error:', error.name, error.message);
     return reply(res, expected ? 400 : 502, { error: expected ? error.message : 'Could not complete the request. Please try again.' });

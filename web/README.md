@@ -1,6 +1,6 @@
 # Lingueez personal web
 
-This web edition lives alongside the Lingueez desktop source. It uses the same Google public translation endpoint and the desktop app's SM-2 review rules. The browser requests translations directly so lookups use the user's connection rather than Vercel's shared server address; the server endpoint remains a fallback if the browser cannot reach Google. Translation appears automatically after a short pause while typing, without saving; clicking **Save to words** adds it to vocabulary. The language swap button supports English → Hebrew and Hebrew → English, as well as the other available language pairs. Repeated saves count as new encounters. The app includes vocabulary management, flashcards, a quiz, a pasted-text reader, progress, and JSON backup/import.
+This web edition lives alongside the Lingueez desktop source. It uses the same Google public translation endpoint and the desktop app's SM-2 review rules. The browser requests translations directly so lookups use the user's connection rather than Vercel's shared server address. If Google limits or fails a lookup, the browser tries MyMemory for text up to 500 UTF-8 bytes, then the server tries Google and MyMemory. MyMemory receives the text being translated when used. Translation appears automatically after a short pause while typing, without saving; clicking **Save to words** adds it to vocabulary. The language swap button supports English → Hebrew and Hebrew → English, as well as the other available language pairs. Repeated saves count as new encounters. The app includes vocabulary management, flashcards, a quiz, a pasted-text reader, progress, and JSON backup/import.
 
 The translation page has separate Listen controls for the input text and translated text. Pronunciation uses the browser's speech synthesis voices for the selected source and target languages.
 
@@ -35,6 +35,6 @@ The static login screen can be loaded by anyone, while every data and translatio
 
 The sign-in cookie lasts one year and is renewed when an active session has fewer than 90 days left. Existing shorter sessions are renewed on their next authenticated request. Signing out or clearing browser cookies removes the local session.
 
-The Google web translation endpoint is unofficial and may change or rate-limit requests. A failed translation is shown as an error and is not saved as a successful word.
+The Google web translation endpoint is unofficial and may change or rate-limit requests. MyMemory's free API has daily usage limits. If both providers fail, the app shows an error and does not save a word.
 
 This web edition preserves the project's AGPL-3.0-or-later license and required Lingueez attribution in `NOTICE`.

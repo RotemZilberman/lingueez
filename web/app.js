@@ -19,15 +19,34 @@ async function translateText(text, source, target, signal) {
   let translation;
   try {
     const response = await fetch(url, { credentials: 'omit', signal });
-    if (response.status === 429) throw new Error('Google is temporarily limiting translations. Please try again shortly.');
     if (!response.ok) throw new Error(`Translation service returned ${response.status}`);
     const payload = await response.json();
     translation = payload?.[0]?.map(segment => segment?.[0] || '').join('').trim();
     if (!translation) throw new Error('No translation was returned');
   } catch (error) {
-    if (error.name === 'AbortError' || error.message.includes('temporarily limiting')) throw error;
-    const fallback = await api('translate', 'POST', { text, source, target }, { signal });
-    translation = fallback.translation;
+    if (signal?.aborted || error.name === 'AbortError') throw error;
+    // Google's public endpoint can limit a browser IP. Try a second
+    // provider from the browser before using the server's shared IP.
+    if (new TextEncoder().encode(text).length <= 500) {
+      try {
+        const backupUrl = new URL('https://api.mymemory.translated.net/get');
+        backupUrl.searchParams.set('q', text);
+        backupUrl.searchParams.set('langpair', `${source}|${target}`);
+        const backup = await fetch(backupUrl, { credentials: 'omit', signal });
+        if (!backup.ok) throw new Error(`Backup translator returned ${backup.status}`);
+        const payload = await backup.json();
+        translation = payload?.responseData?.translatedText?.trim();
+        if (Number(payload?.responseStatus) !== 200 || !translation || /^MYMEMORY WARNING/i.test(translation)) {
+          throw new Error('Backup translator returned no translation');
+        }
+      } catch (backupError) {
+        if (signal?.aborted || backupError.name === 'AbortError') throw backupError;
+      }
+    }
+    if (!translation) {
+      const fallback = await api('translate', 'POST', { text, source, target }, { signal });
+      translation = fallback.translation;
+    }
   }
   translationCache.set(key, translation);
   if (translationCache.size > 200) translationCache.delete(translationCache.keys().next().value);

@@ -62,10 +62,21 @@ test('translation previews both directions and saves only after a separate reque
     assert.equal((await call('data', null, cookie)).body.words.length, 1);
     assert.equal(JSON.parse(readFileSync(join(directory, 'data/vocabulary.json'))).words[0].text, 'hello');
 
-    globalThis.fetch = async () => ({ ok: false, status: 429 });
+    globalThis.fetch = async url => {
+      if (new URL(url).hostname === 'api.mymemory.translated.net') {
+        return { ok: true, json: async () => ({ responseStatus: 200, responseData: { translatedText: 'house' } }) };
+      }
+      return { ok: false, status: 429 };
+    };
     const limited = await call('translate', { text: 'בית', source: 'he', target: 'en' }, cookie);
-    assert.equal(limited.status, 429);
-    assert.match(limited.body.error, /limiting translations/);
+    assert.equal(limited.status, 200);
+    assert.equal(limited.body.translation, 'house');
+    assert.equal((await call('data', null, cookie)).body.words.length, 1);
+
+    globalThis.fetch = async () => ({ ok: false, status: 429 });
+    const unavailable = await call('translate', { text: 'בית', source: 'he', target: 'en' }, cookie);
+    assert.equal(unavailable.status, 503);
+    assert.match(unavailable.body.error, /temporarily unavailable/);
   } finally {
     process.chdir(originalCwd);
     globalThis.fetch = originalFetch;
