@@ -25,9 +25,16 @@ async function translateText(text, source, target, signal) {
     if (!translation) throw new Error('No translation was returned');
   } catch (error) {
     if (signal?.aborted || error.name === 'AbortError') throw error;
-    // Google's public endpoint can limit a browser IP. Try a second
-    // provider from the browser before using the server's shared IP.
-    if (new TextEncoder().encode(text).length <= 500) {
+    // The server retries with the PDF translator's mobile request before
+    // using MyMemory. If its shared IP is also limited, try the backup
+    // from this browser's connection.
+    try {
+      const fallback = await api('translate', 'POST', { text, source, target }, { signal });
+      translation = fallback.translation;
+    } catch (serverError) {
+      if (signal?.aborted || serverError.name === 'AbortError') throw serverError;
+    }
+    if (!translation && new TextEncoder().encode(text).length <= 500) {
       try {
         const backupUrl = new URL('https://api.mymemory.translated.net/get');
         backupUrl.searchParams.set('q', text);
@@ -43,10 +50,7 @@ async function translateText(text, source, target, signal) {
         if (signal?.aborted || backupError.name === 'AbortError') throw backupError;
       }
     }
-    if (!translation) {
-      const fallback = await api('translate', 'POST', { text, source, target }, { signal });
-      translation = fallback.translation;
-    }
+    if (!translation) throw new Error('Translation is temporarily unavailable. Please try again shortly.');
   }
   translationCache.set(key, translation);
   if (translationCache.size > 200) translationCache.delete(translationCache.keys().next().value);

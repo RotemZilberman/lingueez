@@ -67,19 +67,34 @@ async function body(req) {
 async function googleTranslate(text, source, target) {
   const url = new URL('https://translate.googleapis.com/translate_a/single');
   for (const [key, value] of Object.entries({ client: 'gtx', sl: source, tl: target, dt: 't', q: text })) url.searchParams.set(key, value);
-  const response = await fetch(url, {
-    headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'application/json' },
-    signal: AbortSignal.timeout(15000)
-  });
-  if (!response.ok) {
-    const error = new Error(`Translation service returned ${response.status}`);
-    error.status = response.status;
-    throw error;
+  // Match the PDF translator's mobile client request and bounded retry.
+  // Keep each attempt short enough for Vercel's 30-second function limit.
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'GoogleTranslate/6.29.59279 (iPhone; iOS 15.4; en; iPhone14,2)',
+          Accept: 'application/json'
+        },
+        signal: AbortSignal.timeout(8000)
+      });
+      if (!response.ok) {
+        const error = new Error(`Translation service returned ${response.status}`);
+        error.status = response.status;
+        throw error;
+      }
+      const payload = await response.json();
+      const translation = payload?.[0]?.map(segment => segment?.[0] || '').join('').trim();
+      if (!translation) throw new Error('Translation service returned no text');
+      return translation;
+    } catch (error) {
+      lastError = error;
+      if (attempt || (error.status && error.status < 500 && error.status !== 429)) break;
+      await new Promise(resolve => setTimeout(resolve, 800));
+    }
   }
-  const payload = await response.json();
-  const translation = payload?.[0]?.map(segment => segment?.[0] || '').join('').trim();
-  if (!translation) throw new Error('Translation service returned no text');
-  return translation;
+  throw lastError;
 }
 
 async function myMemoryTranslate(text, source, target) {
@@ -88,7 +103,7 @@ async function myMemoryTranslate(text, source, target) {
   const url = new URL('https://api.mymemory.translated.net/get');
   url.searchParams.set('q', text);
   url.searchParams.set('langpair', `${source}|${target}`);
-  const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
+  const response = await fetch(url, { signal: AbortSignal.timeout(10000) });
   if (!response.ok) throw new Error(`Backup translator returned ${response.status}`);
   const payload = await response.json();
   const translation = payload?.responseData?.translatedText?.trim();
