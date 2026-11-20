@@ -260,6 +260,11 @@ export default async function handler(req, res) {
     return reply(res, 404, { error: 'Unknown route' });
   } catch (error) {
     if (error.status === 503) return reply(res, 503, { error: error.message });
+    if (op === 'save') {
+      console.error('Save failed:', error.name, error.message);
+      const detail = String(error.message || '').replace(/(?:vercel_blob_rw_|vcp_)[A-Za-z0-9._-]+/g, '[redacted]').replace(/https?:\/\/\S+/g, '[URL]').slice(0, 240);
+      return reply(res, 502, { error: 'Could not save the word', kind: error.name, detail });
+    }
     const expected = /^(Invalid|Word not found|Request too large|Enter|Choose|Add a title)/.test(error.message);
     if (!expected) console.error('API error:', error.name, error.message);
     return reply(res, expected ? 400 : 502, { error: expected ? error.message : 'Could not complete the request. Please try again.' });

@@ -14,20 +14,20 @@ function localMode() {
   return !process.env.BLOB_READ_WRITE_TOKEN && !process.env.VERCEL_OIDC_TOKEN;
 }
 
-export async function loadData() {
+export async function loadData(blob = { get, put }) {
   if (localMode()) {
     try { return { data: JSON.parse(await readFile(LOCAL_PATH, 'utf8')), etag: null }; }
     catch (error) { if (error.code === 'ENOENT') return { data: emptyData(), etag: null }; throw error; }
   }
-  const result = await get(BLOB_PATH, { access: 'private', useCache: false });
+  const result = await blob.get(BLOB_PATH, { access: 'private', useCache: false });
   if (!result) return { data: emptyData(), etag: null };
   const data = JSON.parse(await new Response(result.stream).text());
   return { data, etag: result.blob.etag };
 }
 
-export async function mutateData(change) {
+export async function mutateData(change, blob = { get, put }) {
   for (let attempt = 0; attempt < 5; attempt++) {
-    const { data, etag } = await loadData();
+    const { data, etag } = await loadData(blob);
     const result = await change(data);
     if (localMode()) {
       await mkdir(dirname(LOCAL_PATH), { recursive: true });
@@ -35,13 +35,14 @@ export async function mutateData(change) {
       return { data, result };
     }
     try {
-      await put(BLOB_PATH, JSON.stringify(data), {
+      await blob.put(BLOB_PATH, JSON.stringify(data), {
         access: 'private', contentType: 'application/json',
-        ...(etag ? { allowOverwrite: true, ifMatch: etag } : {})
+        addRandomSuffix: false, allowOverwrite: true,
+        ...(etag ? { ifMatch: etag } : {})
       });
       return { data, result };
     } catch (error) {
-      const conflict = /Precondition failed|ETag mismatch|already exists/i.test(error.message || '');
+      const conflict = error.name === 'BlobPreconditionFailedError' || /Precondition failed|ETag mismatch|already exists/i.test(error.message || '');
       if (!conflict || attempt === 4) throw error;
     }
   }
