@@ -1,4 +1,4 @@
-import { get, put } from '@vercel/blob';
+import { get, head, put } from '@vercel/blob';
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { emptyData } from './core.js';
@@ -14,7 +14,7 @@ function localMode() {
   return !process.env.BLOB_READ_WRITE_TOKEN && !process.env.VERCEL_OIDC_TOKEN;
 }
 
-export async function loadData(blob = { get, put }) {
+export async function loadData(blob = { get, head, put }) {
   if (localMode()) {
     try { return { data: JSON.parse(await readFile(LOCAL_PATH, 'utf8')), etag: null }; }
     catch (error) { if (error.code === 'ENOENT') return { data: emptyData(), etag: null }; throw error; }
@@ -25,7 +25,7 @@ export async function loadData(blob = { get, put }) {
   return { data, etag: result.blob.etag };
 }
 
-export async function mutateData(change, blob = { get, put }) {
+export async function mutateData(change, blob = { get, head, put }) {
   for (let attempt = 0; attempt < 5; attempt++) {
     const { data, etag } = await loadData(blob);
     const result = await change(data);
@@ -35,10 +35,14 @@ export async function mutateData(change, blob = { get, put }) {
       return { data, result };
     }
     try {
+      // `get()` reads through the Blob CDN. Its response ETag can differ
+      // from the version tag accepted by conditional writes. `head()` reads
+      // the control-plane metadata used by `put({ ifMatch })`.
+      const writeEtag = etag && blob.head ? (await blob.head(BLOB_PATH)).etag : etag;
       await blob.put(BLOB_PATH, JSON.stringify(data), {
         access: 'private', contentType: 'application/json',
         addRandomSuffix: false, allowOverwrite: true,
-        ...(etag ? { ifMatch: etag } : {})
+        ...(writeEtag ? { ifMatch: writeEtag } : {})
       });
       return { data, result };
     } catch (error) {

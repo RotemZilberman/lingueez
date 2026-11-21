@@ -34,3 +34,28 @@ test('production storage overwrites the fixed private blob when GET has no ETag'
     if (oldToken === undefined) delete process.env.BLOB_READ_WRITE_TOKEN; else process.env.BLOB_READ_WRITE_TOKEN = oldToken;
   }
 });
+
+test('production storage uses Blob metadata ETag for conditional writes', async () => {
+  const oldVercel = process.env.VERCEL;
+  const oldToken = process.env.BLOB_READ_WRITE_TOKEN;
+  process.env.VERCEL = '1';
+  process.env.BLOB_READ_WRITE_TOKEN = 'test-token';
+  let stored = { version: 1, words: [], texts: [], events: [] };
+  let metadataReads = 0;
+  const blob = {
+    async get() { return { stream: new Response(JSON.stringify(stored)).body, blob: { etag: 'cdn-etag' } }; },
+    async head() { metadataReads++; return { etag: 'write-etag' }; },
+    async put(_path, body, options) {
+      if (options.ifMatch !== 'write-etag') throw new Error('Vercel Blob: Precondition failed: ETag mismatch.');
+      stored = JSON.parse(body);
+    }
+  };
+  try {
+    await mutateData(data => saveTranslation(data, { text: 'apple', translation: 'תפוח' }), blob);
+    assert.equal(stored.words.length, 1);
+    assert.equal(metadataReads, 1);
+  } finally {
+    if (oldVercel === undefined) delete process.env.VERCEL; else process.env.VERCEL = oldVercel;
+    if (oldToken === undefined) delete process.env.BLOB_READ_WRITE_TOKEN; else process.env.BLOB_READ_WRITE_TOKEN = oldToken;
+  }
+});
